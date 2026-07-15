@@ -1,4 +1,5 @@
 #!/bin/bash
+set -e
 
 # Versions
 VPX_VERSION=1.13.0
@@ -40,7 +41,7 @@ TOOLCHAIN_PREFIX="${ANDROID_NDK_HOME}/toolchains/llvm/prebuilt/${HOST_PLATFORM}"
 CMAKE_EXECUTABLE="${ANDROID_SDK_HOME}/cmake/${ANDROID_CMAKE_VERSION}/bin/cmake"
 
 # Check if sdkmanager is in PATH
-if command -v sdkmanager > /dev/null 2>&1; then
+if command -v sdkmanager &> /dev/null; then
   # Use sdkmanager from PATH
   echo "Using sdkmanager from PATH"
   echo y | sdkmanager --sdk_root="${ANDROID_SDK_HOME}" "cmake;${ANDROID_CMAKE_VERSION}"
@@ -62,7 +63,7 @@ function downloadLibVpx() {
   pushd $SOURCES_DIR
   echo "Downloading Vpx source code of version $VPX_VERSION..."
   VPX_FILE=libvpx-$VPX_VERSION.tar.gz
-  curl -L "https://github.com/webmproject/libvpx/archive/refs/tags/v$VPX_VERSION.tar.gz" -o $VPX_FILE
+  curl -L "https://github.com/webmproject/libvpx/archive/refs/tags/v${VPX_VERSION}.tar.gz" -o $VPX_FILE
   [ -e $VPX_FILE ] || { echo "$VPX_FILE does not exist. Exiting..."; exit 1; }
   tar -zxf $VPX_FILE
   rm $VPX_FILE
@@ -73,7 +74,7 @@ function downloadMbedTLS() {
   pushd $SOURCES_DIR
   echo "Downloading mbedtls source code of version $MBEDTLS_VERSION..."
   MBEDTLS_FILE=mbedtls-$MBEDTLS_VERSION.tar.gz
-  curl -L "https://github.com/Mbed-TLS/mbedtls/archive/refs/tags/v$MBEDTLS_VERSION.tar.gz" -o $MBEDTLS_FILE
+  curl -L "https://github.com/Mbed-TLS/mbedtls/archive/refs/tags/v${MBEDTLS_VERSION}.tar.gz" -o $MBEDTLS_FILE
   [ -e $MBEDTLS_FILE ] || { echo "$MBEDTLS_FILE does not exist. Exiting..."; exit 1; }
   tar -zxf $MBEDTLS_FILE
   rm $MBEDTLS_FILE
@@ -84,7 +85,7 @@ function downloadFfmpeg() {
   pushd $SOURCES_DIR
   echo "Downloading Ffmpeg source code of version $FFMPEG_VERSION..."
   FFMPEG_FILE=ffmpeg-$FFMPEG_VERSION.tar.gz
-  curl -L "https://ffmpeg.org/releases/ffmpeg-$FFMPEG_VERSION.tar.gz" -o $FFMPEG_FILE
+  curl -L "https://ffmpeg.org/releases/ffmpeg-${FFMPEG_VERSION}.tar.gz" -o $FFMPEG_FILE
   [ -e $FFMPEG_FILE ] || { echo "$FFMPEG_FILE does not exist. Exiting..."; exit 1; }
   tar -zxf $FFMPEG_FILE
   rm $FFMPEG_FILE
@@ -121,7 +122,7 @@ function buildLibVpx() {
       TOOLCHAIN=i686-linux-android21-
       ;;
     x86_64)
-      EXTRA_BUILD_FLAGS="--force-target=x86_64-android-gcc --disable-sse2 --disable-sse3 --disable-ssse3 --disable-sse4_1 --disable-avx --disable-avx2 --disable-neon --enable-pic"
+      EXTRA_BUILD_FLAGS="--force-target=x86_64-android-gcc --disable-sse2 --disable-sse3 --disable-ssse3 --disable-sse4_1 --disable-avx --disable-avx2 --enable-pic --disable-neon --disable-neon-asm"
       VPX_AS=${TOOLCHAIN_PREFIX}/bin/yasm
       TOOLCHAIN=x86_64-linux-android21-
       ;;
@@ -132,16 +133,16 @@ function buildLibVpx() {
     esac
 
     CC=${TOOLCHAIN_PREFIX}/bin/${TOOLCHAIN}clang \
-    CXX=${CC}++ \
-    LD=${CC} \
-    AR=${TOOLCHAIN_PREFIX}/bin/llvm-ar \
-    AS=${VPX_AS} \
-    STRIP=${TOOLCHAIN_PREFIX}/bin/llvm-strip \
-    NM=${TOOLCHAIN_PREFIX}/bin/llvm-nm \
-    LDFLAGS="-Wl,-z,max-page-size=16384" \
-    ./configure \
+      CXX=${CC}++ \
+      LD=${CC} \
+      AR=${TOOLCHAIN_PREFIX}/bin/llvm-ar \
+      AS=${VPX_AS} \
+      STRIP=${TOOLCHAIN_PREFIX}/bin/llvm-strip \
+      NM=${TOOLCHAIN_PREFIX}/bin/llvm-nm \
+      LDFLAGS="-Wl,-z,max-page-size=16384" \
+      ./configure \
       --prefix=$BUILD_DIR/external/$ABI \
-      --libdir=${TOOLCHAIN_PREFIX}/sysroot \
+      --libc="${TOOLCHAIN_PREFIX}/sysroot" \
       --enable-vp8 \
       --enable-vp9 \
       --enable-static \
@@ -149,6 +150,7 @@ function buildLibVpx() {
       --disable-examples \
       --disable-docs \
       --enable-realtime-only \
+      --enable-install-libs \
       --enable-multithread \
       --disable-webm-io \
       --disable-libyuv \
@@ -168,18 +170,18 @@ function buildMbedTLS() {
 
     for ABI in $ANDROID_ABIS; do
 
-      CMAKE_BUILD_DIR=$MBEDTLS_DIR/mbedTLS_build_$ABI
+      CMAKE_BUILD_DIR=$MBEDTLS_DIR/mbedtls_build_${ABI}
       rm -rf ${CMAKE_BUILD_DIR}
       mkdir -p ${CMAKE_BUILD_DIR}
       cd ${CMAKE_BUILD_DIR}
 
       ${CMAKE_EXECUTABLE} .. \
-        -DANDROID_PLATFORM=${ANDROID_PLATFORM} \
-        -DANDROID_ABI=$ABI \
-        -DCMAKE_TOOLCHAIN_FILE=${ANDROID_NDK_HOME}/build/cmake/android.toolchain.cmake \
-        -DCMAKE_INSTALL_PREFIX=$BUILD_DIR/external/$ABI \
-        -DCMAKE_SHARED_LINKER_FLAGS="-Wl,-z,max-page-size=16384" \
-        -DENABLE_TESTING=0
+       -DANDROID_PLATFORM=${ANDROID_PLATFORM} \
+       -DANDROID_ABI=$ABI \
+       -DCMAKE_TOOLCHAIN_FILE=${ANDROID_NDK_HOME}/build/cmake/android.toolchain.cmake \
+       -DCMAKE_INSTALL_PREFIX=$BUILD_DIR/external/$ABI \
+       -DCMAKE_SHARED_LINKER_FLAGS="-Wl,-z,max-page-size=16384" \
+       -DENABLE_TESTING=0
 
       make -j$JOBS
       make install
@@ -196,30 +198,28 @@ function buildDavs2() {
     case $ABI in
     armeabi-v7a)
       TOOLCHAIN=armv7a-linux-androideabi21-
-      CPU=armv7
-      ARCH=arm
+      HOST_TRIPLE=armv7a-linux-android
       ;;
     arm64-v8a)
       TOOLCHAIN=aarch64-linux-android21-
-      CPU=aarch64
-      ARCH=aarch64
+      HOST_TRIPLE=aarch64-linux-android
       ;;
     x86)
       TOOLCHAIN=i686-linux-android21-
-      CPU=i686
-      ARCH=i686
-      EXTRA_BUILD_FLAGS=--disable-asm
+      HOST_TRIPLE=i686-linux-android
       ;;
     x86_64)
       TOOLCHAIN=x86_64-linux-android21-
-      CPU=x86_64
-      ARCH=x86_64
+      HOST_TRIPLE=x86_64-linux-android
       ;;
     *)
       echo "Unsupported architecture: $ABI"
       exit 1
       ;;
     esac
+
+    # davs2 configure script is in build/linux/
+    cd build/linux
 
     CC=${TOOLCHAIN_PREFIX}/bin/${TOOLCHAIN}clang \
     CXX=${CC}++ \
@@ -230,7 +230,7 @@ function buildDavs2() {
     PKG_CONFIG_PATH=$BUILD_DIR/external/$ABI/lib/pkgconfig \
     ./configure \
       --prefix=$BUILD_DIR/external/$ABI \
-      --host=$ARCH-linux \
+      --host=$HOST_TRIPLE \
       --enable-static \
       --disable-shared \
       --disable-asm \
@@ -240,6 +240,9 @@ function buildDavs2() {
     make clean
     make -j$JOBS
     make install
+
+    # Go back to davs2 root for next ABI
+    cd ../..
   done
   popd
 }
@@ -266,7 +269,7 @@ function buildFfmpeg() {
       ;;
     arm64-v8a)
       TOOLCHAIN=aarch64-linux-android21-
-      CPU=aarch64
+      CPU=armv8-a
       ARCH=aarch64
       ;;
     x86)
@@ -312,13 +315,13 @@ function buildFfmpeg() {
       --disable-everything \
       --disable-vulkan \
       --disable-avdevice \
-      --disable-avformat \
       --disable-postproc \
       --disable-avfilter \
       --disable-symver \
       --enable-parsers \
       --enable-demuxers \
       --enable-swresample \
+      --enable-avformat \
       --enable-avcodec \
       --enable-libvpx \
       --enable-libdavs2 \
@@ -348,7 +351,7 @@ function buildFfmpeg() {
   popd
 }
 
-if [[ ! -d "$OUTPUT_DIR" && ! -d "$BUILD_DIR" ]]; then
+if [[ ! -d "$OUTPUT_DIR" ]]; then
   # Download MbedTLS source code if it doesn't exist
   if [[ ! -d "$MBEDTLS_DIR" ]]; then
     downloadMbedTLS
@@ -374,4 +377,8 @@ if [[ ! -d "$OUTPUT_DIR" && ! -d "$BUILD_DIR" ]]; then
   buildLibVpx
   buildDavs2
   buildFfmpeg
+
+  echo "=== FFmpeg build complete ==="
+  echo "=== Output libraries ==="
+  find "$OUTPUT_DIR" -name "*.so" | sort
 fi
