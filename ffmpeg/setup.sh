@@ -327,6 +327,7 @@ function buildFfmpeg() {
       --enable-libdavs2 \
       --enable-protocol=file,http,https,mmsh,mmst,pipe,rtmp,rtmps,rtmpt,rtmpts,rtp,tls \
       --enable-version3 \
+      --enable-gpl \
       --enable-mbedtls \
       --extra-ldexeflags=-pie \
       --disable-debug \
