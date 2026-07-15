@@ -241,6 +241,22 @@ function buildDavs2() {
     make -j$JOBS lib-static
     make install-lib-static
 
+    # Fix davs2.pc Version field (version.sh may fail with git clone --branch)
+    PC_FILE="$BUILD_DIR/external/$ABI/lib/pkgconfig/davs2.pc"
+    if [ -f "$PC_FILE" ]; then
+      echo "=== davs2.pc before fix ==="
+      cat "$PC_FILE"
+      if ! grep -q "^Version: 1" "$PC_FILE"; then
+        if grep -q "^Version:" "$PC_FILE"; then
+          sed -i "s/^Version:.*/Version: 1.7.0/" "$PC_FILE"
+        else
+          sed -i "/^Name:/a Version: 1.7.0" "$PC_FILE"
+        fi
+        echo "=== davs2.pc after fix ==="
+        cat "$PC_FILE"
+      fi
+    fi
+
     # Go back to davs2 root for next ABI
     cd ../..
   done
@@ -293,6 +309,9 @@ function buildFfmpeg() {
     DEP_CFLAGS="-I$BUILD_DIR/external/$ABI/include"
     DEP_LD_FLAGS="-L$BUILD_DIR/external/$ABI/lib"
 
+    # Set PKG_CONFIG_PATH so FFmpeg configure can find davs2.pc
+    export PKG_CONFIG_PATH="$BUILD_DIR/external/$ABI/lib/pkgconfig"
+
     # Configure FFmpeg build
     ./configure \
       --prefix=$BUILD_DIR/$ABI \
@@ -307,6 +326,7 @@ function buildFfmpeg() {
       --extra-cflags="-O3 -fPIC $DEP_CFLAGS" \
       --extra-ldflags="$DEP_LD_FLAGS -Wl,-z,max-page-size=16384" \
       --pkg-config="$(which pkg-config)" \
+      --pkg-config-flags="--static" \
       --target-os=android \
       --enable-shared \
       --disable-static \
