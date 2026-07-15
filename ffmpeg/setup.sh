@@ -238,8 +238,9 @@ function buildDavs2() {
       --extra-ldflags="-L$BUILD_DIR/external/$ABI/lib"
 
     make clean
-    make -j$JOBS
-    make install
+    # Only build the library, NOT the test executable (which needs -llog and fails)
+    make -j$JOBS lib
+    make install-lib
 
     # Go back to davs2 root for next ABI
     cd ../..
