@@ -5,7 +5,7 @@
  *
  * 新增 CAVS / AVS2 / AVS3 视频 codec 映射:
  *   "video/cavs" -> "cavs"        (FFmpeg 内置 CAVS 解码器)
- *   "video/avs2" -> "libdavs2"    (外部 libdavs2 库)
+ *   "video/avs2" -> "libdavs2"    (外部 libdavs2 库 )
  *   "video/avs3" -> "avs3"        (FFmpeg 内置 AVS3 解码器, 需要 CAVS patch)
  */
 package io.github.anilbeesetti.nextlib.media3ext.ffdecoder;
