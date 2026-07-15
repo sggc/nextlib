@@ -15,8 +15,7 @@ permissions:
   contents: write
 
 env:
-  ANDROID_NDK_VERSION: "27.0.12077973"
-  ANDROID_CMAKE_VERSION: "3.22.1"
+  ANDROID_NDK_VERSION: "25.2.9519653"
 
 jobs:
   build:
@@ -40,11 +39,9 @@ jobs:
       - name: Install Android NDK and CMake
         run: |
           yes | sdkmanager --licenses || true
-          sdkmanager "ndk;${{ env.ANDROID_NDK_VERSION }}" "cmake;${{ env.ANDROID_CMAKE_VERSION }}" "platform-tools"
+          sdkmanager "ndk;${{ env.ANDROID_NDK_VERSION }}" "cmake;3.22.1" "platform-tools"
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/${{ env.ANDROID_NDK_VERSION }}" >> "$GITHUB_ENV"
           echo "ANDROID_NDK_ROOT=$ANDROID_HOME/ndk/${{ env.ANDROID_NDK_VERSION }}" >> "$GITHUB_ENV"
-          echo "ANDROID_SDK_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
-          echo "ANDROID_CMAKE_VERSION=${{ env.ANDROID_CMAKE_VERSION }}" >> "$GITHUB_ENV"
 
       - name: Install build dependencies
         run: |
@@ -54,32 +51,21 @@ jobs:
             nasm yasm python3-pip git autoconf automake libtool \
             cmake ccache unzip wget curl
 
-      - name: Build FFmpeg with CAVS/AVS2/AVS3 decoders
-        run: |
-          chmod +x ffmpeg/setup.sh
-          bash ffmpeg/setup.sh
-
-      - name: Verify FFmpeg libraries
-        run: |
-          echo "=== Built FFmpeg libraries ==="
-          find ffmpeg/output -name "*.so" | sort
-          echo "=== Decoder check ==="
-          for abi in arm64-v8a armeabi-v7a x86 x86_64; do
-            if [ -f "ffmpeg/output/lib/$abi/libavcodec.so" ]; then
-              echo "✓ $ABI: libavcodec.so exists"
-            else
-              echo "✗ $ABI: libavcodec.so MISSING"
-            fi
-          done
-
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           validate-wrappers: true
           gradle-home-cache-cleanup: true
 
-      - name: Build AAR
+      - name: Build AAR (includes ffmpegSetup task)
         run: ./gradlew :media3ext:assembleRelease
+
+      - name: Verify build output
+        run: |
+          echo "=== FFmpeg output libraries ==="
+          find ffmpeg/output -name "*.so" 2>/dev/null | sort || echo "WARNING: No FFmpeg libraries found"
+          echo "=== AAR files ==="
+          find media3ext/build/outputs/aar -name "*.aar" -ls
 
       - name: Upload AAR artifact
         uses: actions/upload-artifact@v4
