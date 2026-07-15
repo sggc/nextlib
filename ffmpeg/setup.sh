@@ -4,6 +4,7 @@
 VPX_VERSION=1.13.0
 MBEDTLS_VERSION=3.4.1
 FFMPEG_VERSION=6.0
+DAVS2_VERSION=1.7
 
 # Directories
 BASE_DIR=$(cd "$(dirname "$0")" && pwd)
@@ -13,12 +14,13 @@ SOURCES_DIR=$BASE_DIR/sources
 FFMPEG_DIR=$SOURCES_DIR/ffmpeg-$FFMPEG_VERSION
 VPX_DIR=$SOURCES_DIR/libvpx-$VPX_VERSION
 MBEDTLS_DIR=$SOURCES_DIR/mbedtls-$MBEDTLS_VERSION
+DAVS2_DIR=$SOURCES_DIR/davs2-$DAVS2_VERSION
 
 # Configuration
 ANDROID_ABIS="x86 x86_64 armeabi-v7a arm64-v8a"
 ANDROID_PLATFORM=21
-ENABLED_DECODERS="vorbis opus flac alac pcm_mulaw pcm_alaw mp3 amrnb amrwb aac ac3 eac3 dca mlp truehd h264 hevc mpeg2video mpegvideo libvpx_vp8 libvpx_vp9"
-JOBS=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || sysctl -n hw.pysicalcpu || echo 4)
+ENABLED_DECODERS="vorbis opus flac alac pcm_mulaw pcm_alaw mp3 amrnb amrwb aac ac3 eac3 dca mlp truehd h264 hevc mpeg2video mpegvideo libvpx_vp8 libvpx_vp9 cavs avs3 libdavs2"
+JOBS=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || sysctl -n hw.physicalcpu 2>/dev/null || echo 4)
 
 # Set up host platform variables
 HOST_PLATFORM="linux-x86_64"
@@ -38,7 +40,7 @@ TOOLCHAIN_PREFIX="${ANDROID_NDK_HOME}/toolchains/llvm/prebuilt/${HOST_PLATFORM}"
 CMAKE_EXECUTABLE="${ANDROID_SDK_HOME}/cmake/${ANDROID_CMAKE_VERSION}/bin/cmake"
 
 # Check if sdkmanager is in PATH
-if command -v sdkmanager &> /dev/null; then
+if command -v sdkmanager > /dev/null 2>&1; then
   # Use sdkmanager from PATH
   echo "Using sdkmanager from PATH"
   echo y | sdkmanager --sdk_root="${ANDROID_SDK_HOME}" "cmake;${ANDROID_CMAKE_VERSION}"
@@ -60,7 +62,7 @@ function downloadLibVpx() {
   pushd $SOURCES_DIR
   echo "Downloading Vpx source code of version $VPX_VERSION..."
   VPX_FILE=libvpx-$VPX_VERSION.tar.gz
-  curl -L "https://github.com/webmproject/libvpx/archive/refs/tags/v${VPX_VERSION}.tar.gz" -o $VPX_FILE
+  curl -L "https://github.com/webmproject/libvpx/archive/refs/tags/v$VPX_VERSION.tar.gz" -o $VPX_FILE
   [ -e $VPX_FILE ] || { echo "$VPX_FILE does not exist. Exiting..."; exit 1; }
   tar -zxf $VPX_FILE
   rm $VPX_FILE
@@ -71,7 +73,7 @@ function downloadMbedTLS() {
   pushd $SOURCES_DIR
   echo "Downloading mbedtls source code of version $MBEDTLS_VERSION..."
   MBEDTLS_FILE=mbedtls-$MBEDTLS_VERSION.tar.gz
-  curl -L "https://github.com/Mbed-TLS/mbedtls/archive/refs/tags/v${MBEDTLS_VERSION}.tar.gz" -o $MBEDTLS_FILE
+  curl -L "https://github.com/Mbed-TLS/mbedtls/archive/refs/tags/v$MBEDTLS_VERSION.tar.gz" -o $MBEDTLS_FILE
   [ -e $MBEDTLS_FILE ] || { echo "$MBEDTLS_FILE does not exist. Exiting..."; exit 1; }
   tar -zxf $MBEDTLS_FILE
   rm $MBEDTLS_FILE
@@ -80,12 +82,21 @@ function downloadMbedTLS() {
 
 function downloadFfmpeg() {
   pushd $SOURCES_DIR
-  echo "Downloading FFmpeg source code of version $FFMPEG_VERSION..."
+  echo "Downloading Ffmpeg source code of version $FFMPEG_VERSION..."
   FFMPEG_FILE=ffmpeg-$FFMPEG_VERSION.tar.gz
-  curl -L "https://ffmpeg.org/releases/ffmpeg-${FFMPEG_VERSION}.tar.gz" -o $FFMPEG_FILE
+  curl -L "https://ffmpeg.org/releases/ffmpeg-$FFMPEG_VERSION.tar.gz" -o $FFMPEG_FILE
   [ -e $FFMPEG_FILE ] || { echo "$FFMPEG_FILE does not exist. Exiting..."; exit 1; }
   tar -zxf $FFMPEG_FILE
   rm $FFMPEG_FILE
+  popd
+}
+
+function downloadDavs2() {
+  pushd $SOURCES_DIR
+  echo "Downloading davs2 source code of version $DAVS2_VERSION..."
+  if [[ ! -d "davs2-$DAVS2_VERSION" ]]; then
+    git clone --branch $DAVS2_VERSION https://github.com/pkuvcl/davs2.git davs2-$DAVS2_VERSION
+  fi
   popd
 }
 
@@ -110,7 +121,7 @@ function buildLibVpx() {
       TOOLCHAIN=i686-linux-android21-
       ;;
     x86_64)
-      EXTRA_BUILD_FLAGS="--force-target=x86_64-android-gcc --disable-sse2 --disable-sse3 --disable-ssse3 --disable-sse4_1 --disable-avx --disable-avx2 --enable-pic --disable-neon --disable-neon-asm"
+      EXTRA_BUILD_FLAGS="--force-target=x86_64-android-gcc --disable-sse2 --disable-sse3 --disable-ssse3 --disable-sse4_1 --disable-avx --disable-avx2 --disable-neon --enable-pic"
       VPX_AS=${TOOLCHAIN_PREFIX}/bin/yasm
       TOOLCHAIN=x86_64-linux-android21-
       ;;
@@ -121,16 +132,16 @@ function buildLibVpx() {
     esac
 
     CC=${TOOLCHAIN_PREFIX}/bin/${TOOLCHAIN}clang \
-      CXX=${CC}++ \
-      LD=${CC} \
-      AR=${TOOLCHAIN_PREFIX}/bin/llvm-ar \
-      AS=${VPX_AS} \
-      STRIP=${TOOLCHAIN_PREFIX}/bin/llvm-strip \
-      NM=${TOOLCHAIN_PREFIX}/bin/llvm-nm \
-      LDFLAGS="-Wl,-z,max-page-size=16384" \
-      ./configure \
+    CXX=${CC}++ \
+    LD=${CC} \
+    AR=${TOOLCHAIN_PREFIX}/bin/llvm-ar \
+    AS=${VPX_AS} \
+    STRIP=${TOOLCHAIN_PREFIX}/bin/llvm-strip \
+    NM=${TOOLCHAIN_PREFIX}/bin/llvm-nm \
+    LDFLAGS="-Wl,-z,max-page-size=16384" \
+    ./configure \
       --prefix=$BUILD_DIR/external/$ABI \
-      --libc="${TOOLCHAIN_PREFIX}/sysroot" \
+      --libdir=${TOOLCHAIN_PREFIX}/sysroot \
       --enable-vp8 \
       --enable-vp9 \
       --enable-static \
@@ -138,7 +149,6 @@ function buildLibVpx() {
       --disable-examples \
       --disable-docs \
       --enable-realtime-only \
-      --enable-install-libs \
       --enable-multithread \
       --disable-webm-io \
       --disable-libyuv \
@@ -158,24 +168,80 @@ function buildMbedTLS() {
 
     for ABI in $ANDROID_ABIS; do
 
-      CMAKE_BUILD_DIR=$MBEDTLS_DIR/mbedtls_build_${ABI}
+      CMAKE_BUILD_DIR=$MBEDTLS_DIR/mbedTLS_build_$ABI
       rm -rf ${CMAKE_BUILD_DIR}
       mkdir -p ${CMAKE_BUILD_DIR}
       cd ${CMAKE_BUILD_DIR}
 
       ${CMAKE_EXECUTABLE} .. \
-       -DANDROID_PLATFORM=${ANDROID_PLATFORM} \
-       -DANDROID_ABI=$ABI \
-       -DCMAKE_TOOLCHAIN_FILE=${ANDROID_NDK_HOME}/build/cmake/android.toolchain.cmake \
-       -DCMAKE_INSTALL_PREFIX=$BUILD_DIR/external/$ABI \
-       -DCMAKE_SHARED_LINKER_FLAGS="-Wl,-z,max-page-size=16384" \
-       -DENABLE_TESTING=0
+        -DANDROID_PLATFORM=${ANDROID_PLATFORM} \
+        -DANDROID_ABI=$ABI \
+        -DCMAKE_TOOLCHAIN_FILE=${ANDROID_NDK_HOME}/build/cmake/android.toolchain.cmake \
+        -DCMAKE_INSTALL_PREFIX=$BUILD_DIR/external/$ABI \
+        -DCMAKE_SHARED_LINKER_FLAGS="-Wl,-z,max-page-size=16384" \
+        -DENABLE_TESTING=0
 
       make -j$JOBS
       make install
 
     done
     popd
+}
+
+function buildDavs2() {
+  pushd $DAVS2_DIR
+
+  for ABI in $ANDROID_ABIS; do
+    # Set up environment variables
+    case $ABI in
+    armeabi-v7a)
+      TOOLCHAIN=armv7a-linux-androideabi21-
+      CPU=armv7
+      ARCH=arm
+      ;;
+    arm64-v8a)
+      TOOLCHAIN=aarch64-linux-android21-
+      CPU=aarch64
+      ARCH=aarch64
+      ;;
+    x86)
+      TOOLCHAIN=i686-linux-android21-
+      CPU=i686
+      ARCH=i686
+      EXTRA_BUILD_FLAGS=--disable-asm
+      ;;
+    x86_64)
+      TOOLCHAIN=x86_64-linux-android21-
+      CPU=x86_64
+      ARCH=x86_64
+      ;;
+    *)
+      echo "Unsupported architecture: $ABI"
+      exit 1
+      ;;
+    esac
+
+    CC=${TOOLCHAIN_PREFIX}/bin/${TOOLCHAIN}clang \
+    CXX=${CC}++ \
+    LD=${CC} \
+    AR=${TOOLCHAIN_PREFIX}/bin/llvm-ar \
+    STRIP=${TOOLCHAIN_PREFIX}/bin/llvm-strip \
+    NM=${TOOLCHAIN_PREFIX}/bin/llvm-nm \
+    PKG_CONFIG_PATH=$BUILD_DIR/external/$ABI/lib/pkgconfig \
+    ./configure \
+      --prefix=$BUILD_DIR/external/$ABI \
+      --host=$ARCH-linux \
+      --enable-static \
+      --disable-shared \
+      --disable-asm \
+      --extra-cflags="-fPIC -I$BUILD_DIR/external/$ABI/include" \
+      --extra-ldflags="-L$BUILD_DIR/external/$ABI/lib"
+
+    make clean
+    make -j$JOBS
+    make install
+  done
+  popd
 }
 
 function buildFfmpeg() {
@@ -200,7 +266,7 @@ function buildFfmpeg() {
       ;;
     arm64-v8a)
       TOOLCHAIN=aarch64-linux-android21-
-      CPU=armv8-a
+      CPU=aarch64
       ARCH=aarch64
       ;;
     x86)
@@ -253,8 +319,9 @@ function buildFfmpeg() {
       --enable-parsers \
       --enable-demuxers \
       --enable-swresample \
-      --enable-avformat \
+      --enable-avcodec \
       --enable-libvpx \
+      --enable-libdavs2 \
       --enable-protocol=file,http,https,mmsh,mmst,pipe,rtmp,rtmps,rtmpt,rtmpts,rtp,tls \
       --enable-version3 \
       --enable-mbedtls \
@@ -297,8 +364,14 @@ if [[ ! -d "$OUTPUT_DIR" && ! -d "$BUILD_DIR" ]]; then
     downloadFfmpeg
   fi
 
-  # Building library
+  # Download davs2 source code if it doesn't exist
+  if [[ ! -d "$DAVS2_DIR" ]]; then
+    downloadDavs2
+  fi
+
+  # Building libraries
   buildMbedTLS
   buildLibVpx
+  buildDavs2
   buildFfmpeg
 fi
