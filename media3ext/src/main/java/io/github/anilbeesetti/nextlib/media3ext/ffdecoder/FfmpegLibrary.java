@@ -1,3 +1,13 @@
+/*
+ * 修改后的 FfmpegLibrary.java
+ *
+ * 替换 nextlib/media3ext/src/main/java/io/github/anilbeesetti/nextlib/media3ext/ffdecoder/FfmpegLibrary.java
+ *
+ * 新增 CAVS / AVS2 / AVS3 视频 codec 映射:
+ *   "video/cavs" -> "cavs"        (FFmpeg 内置 CAVS 解码器)
+ *   "video/avs2" -> "libdavs2"    (外部 libdavs2 库)
+ *   "video/avs3" -> "avs3"        (FFmpeg 内置 AVS3 解码器, 需要 CAVS patch)
+ */
 package io.github.anilbeesetti.nextlib.media3ext.ffdecoder;
 
 import androidx.annotation.Nullable;
@@ -32,23 +42,14 @@ public final class FfmpegLibrary {
 
   private FfmpegLibrary() {}
 
-  /**
-   * Override the names of the FFmpeg native libraries. If an application wishes to call this
-   * method, it must do so before calling any other method defined by this class, and before
-   * instantiating a {@link FfmpegAudioRenderer} instance.
-   *
-   * @param libraries The names of the FFmpeg native libraries.
-   */
   public static void setLibraries(String... libraries) {
     LOADER.setLibraries(libraries);
   }
 
-  /** Returns whether the underlying library is available, loading it if necessary. */
   public static boolean isAvailable() {
     return LOADER.isAvailable();
   }
 
-  /** Returns the version of the underlying library if available, or null otherwise. */
   @Nullable
   public static String getVersion() {
     if (!isAvailable()) {
@@ -60,10 +61,6 @@ public final class FfmpegLibrary {
     return version;
   }
 
-  /**
-   * Returns the required amount of padding for input buffers in bytes, or {@link C#LENGTH_UNSET} if
-   * the underlying library is not available.
-   */
   public static int getInputBufferPaddingSize() {
     if (!isAvailable()) {
       return C.LENGTH_UNSET;
@@ -74,11 +71,6 @@ public final class FfmpegLibrary {
     return inputBufferPaddingSize;
   }
 
-  /**
-   * Returns whether the underlying library supports the specified MIME type.
-   *
-   * @param mimeType The MIME type to check.
-   */
   public static boolean supportsFormat(String mimeType) {
     if (!isAvailable()) {
       return false;
@@ -94,10 +86,6 @@ public final class FfmpegLibrary {
     return true;
   }
 
-  /**
-   * Returns the name of the FFmpeg decoder that could be used to decode the format, or {@code null}
-   * if it's unsupported.
-   */
   @Nullable
   /* package */ static String getCodecName(String mimeType) {
     return switch (mimeType) {
@@ -124,6 +112,12 @@ public final class FfmpegLibrary {
       case MimeTypes.VIDEO_MPEG2 -> "mpeg2video";
       case MimeTypes.VIDEO_VP8 -> "libvpx";
       case MimeTypes.VIDEO_VP9 -> "libvpx-vp9";
+
+      // === CAVS / AVS2 / AVS3 视频编解码器 (自定义添加) ===
+      case "video/cavs" -> "cavs";
+      case "video/avs2" -> "libdavs2";
+      case "video/avs3" -> "avs3";
+
       default -> null;
     };
   }
