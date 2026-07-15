@@ -231,16 +231,15 @@ function buildDavs2() {
     ./configure \
       --prefix=$BUILD_DIR/external/$ABI \
       --host=$HOST_TRIPLE \
-      --enable-static \
-      --disable-shared \
       --disable-asm \
       --extra-cflags="-fPIC -I$BUILD_DIR/external/$ABI/include" \
       --extra-ldflags="-L$BUILD_DIR/external/$ABI/lib"
 
     make clean
-    # Only build the library, NOT the test executable (which needs -llog and fails)
-    make -j$JOBS lib
-    make install-lib
+    # davs2 Makefile targets: lib-static, install-lib-static (NOT 'lib')
+    # 'make' without target also builds test executable which fails on Android
+    make -j$JOBS lib-static
+    make install-lib-static
 
     # Go back to davs2 root for next ABI
     cd ../..
