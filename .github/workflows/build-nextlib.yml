@@ -1,0 +1,103 @@
+name: Build NextLib with CAVS/AVS2/AVS3 support
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Release tag (e.g. v1.0.0-cavs)"
+        required: true
+        default: "v1.0.0-cavs"
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+env:
+  ANDROID_NDK_VERSION: "27.0.12077973"
+  ANDROID_CMAKE_VERSION: "3.22.1"
+
+jobs:
+  build:
+    name: Build NextLib AAR
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: 17
+          distribution: temurin
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android NDK and CMake
+        run: |
+          yes | sdkmanager --licenses || true
+          sdkmanager "ndk;${{ env.ANDROID_NDK_VERSION }}" "cmake;${{ env.ANDROID_CMAKE_VERSION }}" "platform-tools"
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/${{ env.ANDROID_NDK_VERSION }}" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_ROOT=$ANDROID_HOME/ndk/${{ env.ANDROID_NDK_VERSION }}" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
+          echo "ANDROID_CMAKE_VERSION=${{ env.ANDROID_CMAKE_VERSION }}" >> "$GITHUB_ENV"
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential ninja-build pkg-config \
+            nasm yasm python3-pip git autoconf automake libtool \
+            cmake ccache unzip wget curl
+
+      - name: Build FFmpeg with CAVS/AVS2/AVS3 decoders
+        run: |
+          chmod +x ffmpeg/setup.sh
+          bash ffmpeg/setup.sh
+
+      - name: Verify FFmpeg libraries
+        run: |
+          echo "=== Built FFmpeg libraries ==="
+          find ffmpeg/output -name "*.so" | sort
+          echo "=== Decoder check ==="
+          for abi in arm64-v8a armeabi-v7a x86 x86_64; do
+            if [ -f "ffmpeg/output/lib/$abi/libavcodec.so" ]; then
+              echo "✓ $ABI: libavcodec.so exists"
+            else
+              echo "✗ $ABI: libavcodec.so MISSING"
+            fi
+          done
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          validate-wrappers: true
+          gradle-home-cache-cleanup: true
+
+      - name: Build AAR
+        run: ./gradlew :media3ext:assembleRelease
+
+      - name: Upload AAR artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nextlib-media3ext-cavs-release
+          path: media3ext/build/outputs/aar/*.aar
+          retention-days: 30
+
+      - name: Create GitHub Release
+        if: github.event_name == 'workflow_dispatch'
+        uses: softprops/action-gh-release@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ inputs.release_tag }}
+          name: NextLib ${{ inputs.release_tag }}
+          generate_release_notes: true
+          draft: false
+          prerelease: false
+          files: |
+            media3ext/build/outputs/aar/*.aar
