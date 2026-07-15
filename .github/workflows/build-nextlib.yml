@@ -7,9 +7,6 @@ on:
         description: "Release tag (e.g. v1.0.0-cavs)"
         required: true
         default: "v1.0.0-cavs"
-  push:
-    branches:
-      - main
 
 permissions:
   contents: write
