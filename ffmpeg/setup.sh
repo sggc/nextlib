@@ -328,8 +328,8 @@ function buildFfmpeg() {
       --pkg-config="$(which pkg-config)" \
       --pkg-config-flags="--static" \
       --target-os=android \
-      --enable-shared \
-      --disable-static \
+      --enable-static \
+      --disable-shared \
       --disable-doc \
       --disable-programs \
       --disable-everything \
@@ -362,7 +362,11 @@ function buildFfmpeg() {
 
     OUTPUT_LIB=${OUTPUT_DIR}/lib/${ABI}
     mkdir -p "${OUTPUT_LIB}"
-    cp "${BUILD_DIR}"/"${ABI}"/lib/*.so "${OUTPUT_LIB}"
+    # Copy static libraries (.a) — static linking ensures all FFmpeg symbols
+    # (including swr_free from libswresample) are embedded into libmedia3ext.so
+    cp "${BUILD_DIR}"/"${ABI}"/lib/*.a "${OUTPUT_LIB}" 2>/dev/null || true
+    # Also copy any .so files (for reference/debugging)
+    cp "${BUILD_DIR}"/"${ABI}"/lib/*.so "${OUTPUT_LIB}" 2>/dev/null || true
 
     OUTPUT_HEADERS=${OUTPUT_DIR}/include/${ABI}
     mkdir -p "${OUTPUT_HEADERS}"
