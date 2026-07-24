@@ -362,11 +362,38 @@ function buildFfmpeg() {
 
     OUTPUT_LIB=${OUTPUT_DIR}/lib/${ABI}
     mkdir -p "${OUTPUT_LIB}"
-    # Copy static libraries (.a) — static linking ensures all FFmpeg symbols
+    # Copy FFmpeg static libraries (.a) — static linking ensures all FFmpeg symbols
     # (including swr_free from libswresample) are embedded into libmedia3ext.so
     cp "${BUILD_DIR}"/"${ABI}"/lib/*.a "${OUTPUT_LIB}" 2>/dev/null || true
-    # Also copy any .so files (for reference/debugging)
+    # Copy external dependency static libraries (needed for static linking)
+    cp "${BUILD_DIR}"/external/"${ABI}"/lib/*.a "${OUTPUT_LIB}" 2>/dev/null || true
+    # Also copy any .so files (for reference/debugging, not used in static linking)
     cp "${BUILD_DIR}"/"${ABI}"/lib/*.so "${OUTPUT_LIB}" 2>/dev/null || true
+
+    # Create a merged static library containing ALL FFmpeg + dependency code.
+    # This simplifies CMake linking: instead of linking many individual .a files
+    # with complex dependency ordering, CMake links against a single libffmpeg_all.a
+    # using -Wl,--whole-archive to include all symbols.
+    MERGED_LIB="${OUTPUT_LIB}/libffmpeg_all.a"
+    rm -f "$MERGED_LIB"
+    TMP_MERGE="${BUILD_DIR}/${ABI}/merge_tmp"
+    rm -rf "$TMP_MERGE"
+    mkdir -p "$TMP_MERGE"
+    (
+      cd "$TMP_MERGE"
+      # Extract all FFmpeg .a files
+      for a in "${BUILD_DIR}"/"${ABI}"/lib/*.a; do
+        [ -f "$a" ] && "${TOOLCHAIN_PREFIX}/bin/llvm-ar" x "$a" 2>/dev/null || true
+      done
+      # Extract all external dependency .a files (davs2, vpx, mbedtls)
+      for a in "${BUILD_DIR}"/external/"${ABI}"/lib/*.a; do
+        [ -f "$a" ] && "${TOOLCHAIN_PREFIX}/bin/llvm-ar" x "$a" 2>/dev/null || true
+      done
+      # Create merged .a with all object files
+      "${TOOLCHAIN_PREFIX}/bin/llvm-ar" rcs "$MERGED_LIB" *.o 2>/dev/null || true
+    )
+    rm -rf "$TMP_MERGE"
+    echo "Created merged library: $MERGED_LIB ($(ls -la "$MERGED_LIB" 2>/dev/null | awk '{print $5}') bytes)"
 
     OUTPUT_HEADERS=${OUTPUT_DIR}/include/${ABI}
     mkdir -p "${OUTPUT_HEADERS}"
