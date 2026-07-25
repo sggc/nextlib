@@ -75,32 +75,32 @@ jobs:
           #   ../../../../ = repo root
           #   So ${CMAKE_SOURCE_DIR}/../../../../ffmpeg/output = <repo>/ffmpeg/output
           cat > "$CMAKE_FILE" << 'CMAKEOF'
-cmake_minimum_required(VERSION 3.22.1)
-project("media3ext")
+          cmake_minimum_required(VERSION 3.22.1)
+          project("media3ext")
 
-set(ffmpeg_dir ${CMAKE_SOURCE_DIR}/../../../../ffmpeg/output)
-set(ffmpeg_libs ${ffmpeg_dir}/lib/${ANDROID_ABI})
-include_directories(${ffmpeg_dir}/include/${ANDROID_ABI})
+          set(ffmpeg_dir ${CMAKE_SOURCE_DIR}/../../../../ffmpeg/output)
+          set(ffmpeg_libs ${ffmpeg_dir}/lib/${ANDROID_ABI})
+          include_directories(${ffmpeg_dir}/include/${ANDROID_ABI})
 
-add_library(${CMAKE_PROJECT_NAME} SHARED
-        ffmain.cpp
-        ffcommon.cpp
-        ffaudio.cpp
-        ffvideo.cpp)
+          add_library(${CMAKE_PROJECT_NAME} SHARED
+                  ffmain.cpp
+                  ffcommon.cpp
+                  ffaudio.cpp
+                  ffvideo.cpp)
 
-set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,-z,max-page-size=16384")
+          set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,-z,max-page-size=16384")
 
-target_link_libraries(${CMAKE_PROJECT_NAME}
-        log
-        android
-        -Wl,--whole-archive
-        ${ffmpeg_libs}/libffmpeg_all.a
-        -Wl,--no-whole-archive
-        z
-        m
-        dl
-        pthread)
-CMAKEOF
+          target_link_libraries(${CMAKE_PROJECT_NAME}
+                  log
+                  android
+                  -Wl,--whole-archive
+                  ${ffmpeg_libs}/libffmpeg_all.a
+                  -Wl,--no-whole-archive
+                  z
+                  m
+                  dl
+                  pthread)
+          CMAKEOF
 
           echo "=== Patched CMakeLists.txt ==="
           cat "$CMAKE_FILE"
