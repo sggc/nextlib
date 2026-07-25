@@ -54,73 +54,71 @@ jobs:
           validate-wrappers: true
           gradle-home-cache-cleanup: true
 
-      - name: Patch CMakeLists.txt for static FFmpeg linking
+      - name: Replace CMakeLists.txt for static FFmpeg linking
         run: |
           CMAKE_FILE="media3ext/src/main/cpp/CMakeLists.txt"
           if [ ! -f "$CMAKE_FILE" ]; then
-            echo "Searching for CMakeLists.txt..."
+            echo "ERROR: CMakeLists.txt not found at $CMAKE_FILE"
             find media3ext -name "CMakeLists.txt" -ls
-            CMAKE_FILE=$(find media3ext -name "CMakeLists.txt" | head -1)
-          fi
-          if [ -z "$CMAKE_FILE" ]; then
-            echo "ERROR: CMakeLists.txt not found"
             exit 1
           fi
-          echo "=== Patching $CMAKE_FILE for static FFmpeg linking ==="
-          echo "=== Original content ==="
+          echo "=== Original CMakeLists.txt ==="
           cat "$CMAKE_FILE"
 
-          # Use awk to patch CMakeLists.txt in a single pass:
-          # 1. Capture the FFmpeg path prefix from the first line with a known library name
-          # 2. Remove all lines with individual FFmpeg/dependency .so or .a references
-          # 3. Insert merged libffmpeg_all.a + system libs before closing paren of target_link_libraries
-          awk '
-          BEGIN { in_tll = 0; patched = 0; ffprefix = "" }
-          /lib(avcodec|avformat|avutil|swresample|avfilter|swscale|davs2|vpx|mbedtls|mbedcrypto|mbedx509)\.(so|a)/ {
-              if (ffprefix == "") {
-                  match($0, /lib(avcodec|avformat|avutil|swresample|avfilter|swscale|davs2|vpx|mbedtls|mbedcrypto|mbedx509)\./)
-                  if (RSTART > 0) {
-                      ffprefix = substr($0, 1, RSTART - 1)
-                      sub(/^ +/, "", ffprefix)
-                  }
-              }
-              next
-          }
-          /target_link_libraries/ { in_tll = 1 }
-          in_tll && /\)/ && !patched {
-              if (ffprefix == "") ffprefix = "${CMAKE_CURRENT_SOURCE_DIR}/../../../ffmpeg/output/lib/${ANDROID_ABI}/"
-              match($0, /^ */)
-              indent = substr($0, 1, RLENGTH)
-              print indent "-Wl,--whole-archive"
-              print indent ffprefix "libffmpeg_all.a"
-              print indent "-Wl,--no-whole-archive"
-              print indent "z"
-              print indent "m"
-              print indent "dl"
-              print indent "pthread"
-              patched = 1
-              in_tll = 0
-          }
-          { print }
-          ' "$CMAKE_FILE" > "${CMAKE_FILE}.tmp" && mv "${CMAKE_FILE}.tmp" "$CMAKE_FILE"
+          # Replace the entire CMakeLists.txt with a static-linking version.
+          # The original uses IMPORTED SHARED libraries (libavcodec.so etc.)
+          # which don't exist in a static build. We replace them with a single
+          # libffmpeg_all.a (merged static archive) using -Wl,--whole-archive.
+          #
+          # Path: CMakeLists.txt is at media3ext/src/main/cpp/
+          #   CMAKE_SOURCE_DIR = media3ext/src/main/cpp/
+          #   ../../../../ = repo root
+          #   So ${CMAKE_SOURCE_DIR}/../../../../ffmpeg/output = <repo>/ffmpeg/output
+          cat > "$CMAKE_FILE" << 'CMAKEOF'
+cmake_minimum_required(VERSION 3.22.1)
+project("media3ext")
 
-          if ! grep -q 'libffmpeg_all.a' "$CMAKE_FILE"; then
-            echo "WARNING: Patch did not insert merged library, appending to end"
-            echo "" >> "$CMAKE_FILE"
-            echo "# Static FFmpeg linking (auto-patched)" >> "$CMAKE_FILE"
-            echo "target_link_libraries(media3ext" >> "$CMAKE_FILE"
-            echo "    -Wl,--whole-archive" >> "$CMAKE_FILE"
-            echo "    \${CMAKE_CURRENT_SOURCE_DIR}/../../../ffmpeg/output/lib/\${ANDROID_ABI}/libffmpeg_all.a" >> "$CMAKE_FILE"
-            echo "    -Wl,--no-whole-archive" >> "$CMAKE_FILE"
-            echo "    z" >> "$CMAKE_FILE"
-            echo "    m" >> "$CMAKE_FILE"
-            echo "    dl" >> "$CMAKE_FILE"
-            echo "    pthread" >> "$CMAKE_FILE"
-            echo ")" >> "$CMAKE_FILE"
-          fi
+set(ffmpeg_dir ${CMAKE_SOURCE_DIR}/../../../../ffmpeg/output)
+set(ffmpeg_libs ${ffmpeg_dir}/lib/${ANDROID_ABI})
+include_directories(${ffmpeg_dir}/include/${ANDROID_ABI})
+
+add_library(${CMAKE_PROJECT_NAME} SHARED
+        ffmain.cpp
+        ffcommon.cpp
+        ffaudio.cpp
+        ffvideo.cpp)
+
+set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,-z,max-page-size=16384")
+
+target_link_libraries(${CMAKE_PROJECT_NAME}
+        log
+        android
+        -Wl,--whole-archive
+        ${ffmpeg_libs}/libffmpeg_all.a
+        -Wl,--no-whole-archive
+        z
+        m
+        dl
+        pthread)
+CMAKEOF
 
           echo "=== Patched CMakeLists.txt ==="
           cat "$CMAKE_FILE"
+
+          # Verify the patch
+          if ! grep -q 'libffmpeg_all.a' "$CMAKE_FILE"; then
+            echo "FATAL: Patch failed - libffmpeg_all.a not found in CMakeLists.txt"
+            exit 1
+          fi
+          if grep -q 'IMPORTED' "$CMAKE_FILE"; then
+            echo "FATAL: Patch failed - IMPORTED library references still present"
+            exit 1
+          fi
+          if grep -q 'ffmpeg_libs_names' "$CMAKE_FILE"; then
+            echo "FATAL: Patch failed - ffmpeg_libs_names still present"
+            exit 1
+          fi
+          echo "=== Patch verification passed ==="
 
       - name: Build AAR (includes ffmpegSetup task)
         run: ./gradlew :media3ext:assembleRelease

@@ -432,5 +432,6 @@ if [[ ! -d "$OUTPUT_DIR" ]]; then
 
   echo "=== FFmpeg build complete ==="
   echo "=== Output libraries ==="
-  find "$OUTPUT_DIR" -name "*.so" | sort
+  find "$OUTPUT_DIR" -name "*.a" | sort
+  find "$OUTPUT_DIR" -name "*.so" 2>/dev/null | sort || true
 fi
