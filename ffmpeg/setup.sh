@@ -383,14 +383,16 @@ function buildFfmpeg() {
       cd "$TMP_MERGE"
       # Extract all FFmpeg .a files
       for a in "${BUILD_DIR}"/"${ABI}"/lib/*.a; do
-        [ -f "$a" ] && "${TOOLCHAIN_PREFIX}/bin/llvm-ar" x "$a" 2>/dev/null || true
+        [ -f "$a" ] && "${TOOLCHAIN_PREFIX}/bin/llvm-ar" x "$a"
       done
       # Extract all external dependency .a files (davs2, vpx, mbedtls)
       for a in "${BUILD_DIR}"/external/"${ABI}"/lib/*.a; do
-        [ -f "$a" ] && "${TOOLCHAIN_PREFIX}/bin/llvm-ar" x "$a" 2>/dev/null || true
+        [ -f "$a" ] && "${TOOLCHAIN_PREFIX}/bin/llvm-ar" x "$a"
       done
-      # Create merged .a with all object files
-      "${TOOLCHAIN_PREFIX}/bin/llvm-ar" rcs "$MERGED_LIB" *.o 2>/dev/null || true
+      # Create merged .a with ALL object files (including subdirectories)
+      # FFmpeg stores .o files in subdirs like libavcodec/avcodec.o
+      # so *.o alone would miss them — must use find
+      find . -name '*.o' -print0 | xargs -0 "${TOOLCHAIN_PREFIX}/bin/llvm-ar" rcs "$MERGED_LIB"
     )
     rm -rf "$TMP_MERGE"
     echo "Created merged library: $MERGED_LIB ($(ls -la "$MERGED_LIB" 2>/dev/null | awk '{print $5}') bytes)"
