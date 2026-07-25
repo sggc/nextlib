@@ -109,11 +109,11 @@ function buildLibVpx() {
     # Set up environment variables
     case $ABI in
     armeabi-v7a)
-      EXTRA_BUILD_FLAGS="--force-target=armv7-android-gcc --disable-neon"
+      EXTRA_BUILD_FLAGS="--force-target=armv7-android-gcc --disable-neon --enable-pic"
       TOOLCHAIN=armv7a-linux-androideabi21-
       ;;
     arm64-v8a)
-      EXTRA_BUILD_FLAGS="--force-target=armv8-android-gcc"
+      EXTRA_BUILD_FLAGS="--force-target=armv8-android-gcc --enable-pic"
       TOOLCHAIN=aarch64-linux-android21-
       ;;
     x86)
