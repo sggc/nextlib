@@ -65,15 +65,14 @@ jobs:
           echo "=== Original CMakeLists.txt ==="
           cat "$CMAKE_FILE"
 
-          # Replace the entire CMakeLists.txt with a static-linking version.
-          # The original uses IMPORTED SHARED libraries (libavcodec.so etc.)
-          # which don't exist in a static build. We replace them with a single
-          # libffmpeg_all.a (merged static archive) using -Wl,--whole-archive.
+          # Replace CMakeLists.txt to link individual .a files directly.
+          # NO merged archive — link the original .a files as-is.
+          # --whole-archive ensures ALL code is included (decoders, demuxers, etc.)
+          # --start-group/--end-group handles circular deps between libraries.
           #
           # Path: CMakeLists.txt is at media3ext/src/main/cpp/
           #   CMAKE_SOURCE_DIR = media3ext/src/main/cpp/
           #   ../../../../ = repo root
-          #   So ${CMAKE_SOURCE_DIR}/../../../../ffmpeg/output = <repo>/ffmpeg/output
           cat > "$CMAKE_FILE" << 'CMAKEOF'
           cmake_minimum_required(VERSION 3.22.1)
           project("media3ext")
@@ -94,8 +93,19 @@ jobs:
                   log
                   android
                   -Wl,--whole-archive
-                  ${ffmpeg_libs}/libffmpeg_all.a
+                  ${ffmpeg_libs}/libavcodec.a
+                  ${ffmpeg_libs}/libavformat.a
+                  ${ffmpeg_libs}/libavutil.a
+                  ${ffmpeg_libs}/libswresample.a
+                  ${ffmpeg_libs}/libswscale.a
+                  ${ffmpeg_libs}/libdavs2.a
+                  ${ffmpeg_libs}/libvpx.a
                   -Wl,--no-whole-archive
+                  -Wl,--start-group
+                  ${ffmpeg_libs}/libmbedcrypto.a
+                  ${ffmpeg_libs}/libmbedtls.a
+                  ${ffmpeg_libs}/libmbedx509.a
+                  -Wl,--end-group
                   z
                   m
                   dl)
@@ -105,16 +115,16 @@ jobs:
           cat "$CMAKE_FILE"
 
           # Verify the patch
-          if ! grep -q 'libffmpeg_all.a' "$CMAKE_FILE"; then
-            echo "FATAL: Patch failed - libffmpeg_all.a not found in CMakeLists.txt"
+          if grep -q 'libffmpeg_all' "$CMAKE_FILE"; then
+            echo "FATAL: merged archive reference still present"
+            exit 1
+          fi
+          if ! grep -q 'libavcodec.a' "$CMAKE_FILE"; then
+            echo "FATAL: libavcodec.a not found in CMakeLists.txt"
             exit 1
           fi
           if grep -q 'IMPORTED' "$CMAKE_FILE"; then
-            echo "FATAL: Patch failed - IMPORTED library references still present"
-            exit 1
-          fi
-          if grep -q 'ffmpeg_libs_names' "$CMAKE_FILE"; then
-            echo "FATAL: Patch failed - ffmpeg_libs_names still present"
+            echo "FATAL: IMPORTED library references still present"
             exit 1
           fi
           echo "=== Patch verification passed ==="
@@ -126,7 +136,15 @@ jobs:
         run: |
           echo "=== FFmpeg output libraries ==="
           find ffmpeg/output -name "*.a" 2>/dev/null | sort || echo "WARNING: No FFmpeg static libraries found"
-          find ffmpeg/output -name "*.so" 2>/dev/null | sort || echo "(No shared libraries, expected with static build)"
+          echo "=== Verify key symbols exist in .a files ==="
+          NM="${ANDROID_NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-nm"
+          for ABI in arm64-v8a; do
+            LIBDIR="ffmpeg/output/lib/${ABI}"
+            echo "--- Checking ${ABI} ---"
+            echo "avcodec_free_context:" $(${NM} ${LIBDIR}/libavcodec.a 2>/dev/null | grep -c "T avcodec_free_context")
+            echo "av_frame_alloc:" $(${NM} ${LIBDIR}/libavutil.a 2>/dev/null | grep -c "T av_frame_alloc")
+            echo "swr_alloc:" $(${NM} ${LIBDIR}/libswresample.a 2>/dev/null | grep -c "T swr_alloc")
+          done
           echo "=== AAR files ==="
           find media3ext/build/outputs/aar -name "*.aar" -ls
 
