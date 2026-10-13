@@ -99,6 +99,7 @@ jobs:
                   ${ffmpeg_libs}/libswresample.a
                   ${ffmpeg_libs}/libswscale.a
                   ${ffmpeg_libs}/libdavs2.a
+                  ${ffmpeg_libs}/libuavs3d.a
                   ${ffmpeg_libs}/libvpx.a
                   -Wl,--no-whole-archive
                   -Wl,--start-group

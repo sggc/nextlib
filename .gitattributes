@@ -1,0 +1,6 @@
+# 构建链路关键文件：必须 LF。
+# Linux CI 上 bash 对 CRLF 零容忍（set -e 下首个命令即死），
+# git apply 对 CRLF 补丁也会失败。这里显式锁死，杜绝 Windows 端
+# autocrlf=true 把 LF 检成 CRLF 的历史问题重演。
+ffmpeg/setup.sh text eol=lf
+ffmpeg/patches/* text eol=lf

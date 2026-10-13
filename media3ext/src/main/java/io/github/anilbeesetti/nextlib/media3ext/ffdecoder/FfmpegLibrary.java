@@ -6,7 +6,8 @@
  * 新增 CAVS / AVS2 / AVS3 视频 codec 映射:
  *   "video/cavs" -> "cavs"        (FFmpeg 内置 CAVS 解码器)
  *   "video/avs2" -> "libdavs2"    (外部 libdavs2 库)
- *   "video/avs3" -> "avs3"        (FFmpeg 内置 AVS3 解码器, 需要 CAVS patch)
+ *   "video/avs3" -> "libuavs3d"   (外部 uavs3d 库; ffmpeg 6.0 无内置 avs3 解码器,
+ *                                   "avs3" 是 configure 静默吞掉的无效名)
  */
 package io.github.anilbeesetti.nextlib.media3ext.ffdecoder;
 
@@ -116,7 +117,7 @@ public final class FfmpegLibrary {
       // === CAVS / AVS2 / AVS3 视频编解码器 (自定义添加) ===
       case "video/cavs" -> "cavs";
       case "video/avs2" -> "libdavs2";
-      case "video/avs3" -> "avs3";
+      case "video/avs3" -> "libuavs3d";
 
       default -> null;
     };
