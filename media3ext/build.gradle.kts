@@ -22,7 +22,10 @@ android {
         }
 
         ndk {
-            abiFilters += listOf("x86", "x86_64", "armeabi-v7a", "arm64-v8a")
+            // 必须与 ffmpeg/setup.sh 的 ANDROID_ABIS 保持一致！
+            // setup.sh 只产出这两个 ABI 的 ffmpeg/uavs3d 静态库；
+            // 若这里多写 ABI（如 x86），CMake 会找不到对应 libavcodec.a 而失败。
+            abiFilters += listOf("armeabi-v7a", "arm64-v8a")
         }
     }
 
