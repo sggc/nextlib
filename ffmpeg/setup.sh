@@ -20,7 +20,9 @@ DAVS2_DIR=$SOURCES_DIR/davs2-$DAVS2_VERSION
 UAVS3D_DIR=$SOURCES_DIR/uavs3d
 
 # Configuration
-ANDROID_ABIS="x86 x86_64 armeabi-v7a arm64-v8a"
+# 只编 arm 两个 ABI：本 app abiFilters 仅 armeabi-v7a/arm64-v8a，x86 库在 AAR 里
+# 是纯死重量（约 21MB），且 uavs3d 的 CMake 对 NDK x86(i686) 支持不全。
+ANDROID_ABIS="arm64-v8a armeabi-v7a"
 ANDROID_PLATFORM=21
 # NOTE: 这里必须是真实存在的 ffmpeg 解码器名。
 # "avs3" 在 ffmpeg 6.0 里【没有对应解码器】（只有 avs3 demuxer/parser），
@@ -336,6 +338,14 @@ function buildUavs3d() {
   sed -i 's/-mfloat-abi=hard/-mfloat-abi=softfp/g' source/CMakeLists.txt
   # Force generic CPU: hand-written ARMv7 ASM uses non-PIC relocations
   sed -i 's/set(UAVS3D_TARGET_CPU "armv7")/set(UAVS3D_TARGET_CPU "generic")/' source/CMakeLists.txt
+  # 不编测试 exe：root CMakeLists 无条件 add_executable(uavs3dec)（test/utest.c），
+  # 它只是开发自测程序，还会因 x86 SIMD 符号之类无关问题拖垮构建。
+  sed -i 's|add_executable(uavs3dec|#add_executable(uavs3dec|' CMakeLists.txt
+  sed -i 's|target_link_libraries(uavs3dec|#target_link_libraries(uavs3dec|g' CMakeLists.txt
+  # 修 i686 识别：NDK x86 的 CMAKE_SYSTEM_PROCESSOR 是 i686，上游只认
+  # i386/x86，i686 会落到"unsupported architecture"→generic→丢 SSE/AVX2 符号。
+  # （当前 ANDROID_ABIS 不含 x86，此为保险。）
+  sed -i 's|STREQUAL "x86")|STREQUAL "x86" OR "${CMAKE_SYSTEM_PROCESSOR}" STREQUAL "i686")|' source/CMakeLists.txt
 
   for ABI in $ANDROID_ABIS; do
     echo "=== Building uavs3d for $ABI ==="
