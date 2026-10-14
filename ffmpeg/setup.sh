@@ -455,6 +455,8 @@ function buildFfmpeg() {
       --target-os=android \
       --enable-static \
       --disable-shared \
+      --enable-pic \
+      --disable-asm \
       --disable-doc \
       --disable-programs \
       --disable-everything \
