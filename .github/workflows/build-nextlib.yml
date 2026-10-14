@@ -30,8 +30,28 @@ jobs:
           java-version: 17
           distribution: temurin
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+      # 【2026-10-14】不再依赖 android-actions/setup-android@v3 —— 该 action 自身
+      # 退化（2026-07-25 的老 run 还是好的，最近开始启动即失败）。改为直接下载
+      # Google 官方 cmdline-tools 自行安装，链路短、可控、无第三方依赖。
+      - name: Install Android SDK cmdline-tools
+        run: |
+          set -e
+          mkdir -p "$HOME/android-sdk/cmdline-tools"
+          cd "$HOME/android-sdk"
+          curl -fL --retry 3 -o cmdline.zip \
+            https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+          unzip -q cmdline.zip && rm -f cmdline.zip
+          mv cmdline-tools/bin cmdline-tools/lib cmdline-tools/NOTICE.txt \
+             cmdline-tools/source.properties cmdline-tools/latest 2>/dev/null || true
+          # sdkmanager 需要在 cmdline-tools/latest/bin 下
+          if [ ! -x "$HOME/android-sdk/cmdline-tools/latest/bin/sdkmanager" ]; then
+            mkdir -p cmdline-tools/latest
+            mv cmdline-tools/bin cmdline-tools/lib cmdline-tools/latest/ 2>/dev/null || true
+          fi
+          echo "ANDROID_HOME=$HOME/android-sdk" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$HOME/android-sdk" >> "$GITHUB_ENV"
+          echo "$HOME/android-sdk/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
+          "$HOME/android-sdk/cmdline-tools/latest/bin/sdkmanager" --version
 
       - name: Install Android NDK and CMake
         run: |
